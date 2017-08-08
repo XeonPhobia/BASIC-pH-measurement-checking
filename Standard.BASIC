@@ -1,0 +1,36 @@
+'Define the standard reagents
+'===================
+SampNameArray[1] = "'H3COH_RGT_12'"
+SampNameArray[2] = "'H3COH_RGT_1_12'"
+
+'Find the standard reagents defined.
+'=======================
+delimiter = ","
+sampNameCSV = ArrayToCSVString(sampNameArray, delimiter)
+ClearArray("instrumentArray")
+q =       " SELECT s.TEMPLATE, t.NAME, s.NAME, s.EXPIRATION_DATE, t.DESCRIPTION, s.GROUP_NAME, s.ACTIVE"
+q = q + " FROM STANDARD_REAGENT s, STD_REAG_TEMP t"
+q = q + " WHERE s.TEMPLATE = t.NAME"
+q = q + " AND t.NAME IN (" & sampNameCSV & ")"
+q = q + " AND s.GROUP_NAME = 'DEFAULT_12'"
+q = q + " AND s.ACTIVE = 'T'"
+status = SQL(q,"instrumentArray")
+numRes = UBOUND(instrumentArray, 1)
+
+'The user selects the desired standard reagent.
+'==============================
+status = ArraySubset(instrumentArray, "dispArr", 1, numRes, 3, 3)
+headerArray[1] = "Name"
+headerArray[2] = "Expiration date"
+headerArray[3] = "Description"
+numSelections = MultiColumnSelectFromArray(dispArr, title, "selectionArrayName", headerArray)
+dispRes = UBOUND(selectionArrayName, 1)
+IF (dispRes = 0) THEN
+    RETURN 
+ELSEIF (dispRes = 1) THEN
+    retVal = selectionArrayName[1,1]
+ELSE 
+    status = ArraySubset(selectionArrayName, "retArr", 1, dispRes, 1, 1)
+    retVal = ArrayToCSVString(retArr, delimiter)
+ENDIF
+RETURN retVal
