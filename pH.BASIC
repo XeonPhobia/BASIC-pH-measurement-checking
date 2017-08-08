@@ -1,0 +1,150 @@
+'The long array resnumArray has the following seven entries:
+'Sample number, test number, result number, test number, spec. min, spec. max, pH range
+'
+'Find the relevant information on the current batch
+'===================================================================
+batchName = select BATCH.NAME 
+batchLinkKey = SELECT BATCH.ANALYSIS_LINK_KEY
+template = select BATCH.TEMPLATE 
+    where NAME = batchName 
+    order by TEMPLATE 
+
+'Find the information on all samples that are associated with the current batch.
+'==================================================
+SAMPQUERY = "SELECT SAMPLE_NUMBER FROM BATCH_OBJECTS WHERE BATCH = '" & batchName & "'"
+status = SQL(SAMPQUERY, "sampArray")
+numSamples = UBOUND(sampArray, 1)
+IF (numSamples = 0) THEN
+    RETURN "error1"
+ENDIF
+delimiter = ","
+sampCSV = ArrayToCSVString(sampArray, delimiter)
+resnumquery = "SELECT r.SAMPLE_NUMBER, r.TEST_NUMBER, r.RESULT_NUMBER, t.TEST_NUMBER FROM RESULT r, TEST t WHERE r.SAMPLE_NUMBER IN (" & sampCSV & ")"
+resnumquery = resnumquery & " AND r.NAME = 'pH average'"
+resnumquery = resnumquery & " AND r.TEST_NUMBER = t.TEST_NUMBER"
+resnumquery = resnumquery & " AND t.BATCH =  '" & batchName & "'"
+resnumquery = resnumquery & " AND r.ANALYSIS = '" & batchLinkKey & "'"
+status = SQL(resnumquery, "resnumArray") 
+numRes = UBOUND(resnumArray, 1)
+IF (numRes = 0) THEN
+    RETURN "error2"
+ENDIF
+
+'Find the Specification limmits on all samples that are associated with the current batch.
+'==================================================
+L = 0
+M = 0
+H = 0
+for loopcounter = 1 to numRes
+    sampleNumber = resnumArray[loopcounter,1]
+    testNumber = resnumArray[loopcounter,2]
+    resultNumber = resnumArray[loopcounter,3]
+    status = GetResultLimitDetails(sampleNumber, testNumber, resultNumber, "specArray")
+    specresArray[loopcounter,1] = specArray[1,1]
+    specresArray[loopcounter,2] = specArray[1,2]
+    input1 = specresArray[loopcounter,2]
+    numFound = ExtractNumbers(input1, "outArray")   
+    outArray1 = outArray[1]
+    outArray2 = outArray[2] 
+    resnumArray[loopcounter, 5] = outArray1
+    resnumArray[loopcounter, 6] = outArray2
+    IF (outArray2 <= 4) THEN   
+        resnumArray[loopcounter, 7] = "L" 
+        L = L + 1
+    ELSEIF (outArray1 >= 7) THEN
+        resnumArray[loopcounter, 7] = "H" 
+        H = H + 1
+    ELSEIF (outArray2 <= 7 AND outArray1 >= 4) THEN
+        resnumArray[loopcounter, 7] = "M" 
+        M = M + 1
+    ELSEIF (outArray2 <= 7 AND outArray1 < 4) THEN
+        resnumArray[loopcounter, 7] = "LM" 
+        L = L + 1
+        M = M + 1
+    ELSEIF (outArray2 > 7 AND outArray1 >= 4) THEN
+        resnumArray[loopcounter, 7] = "MH" 
+        M = M + 1
+        H = H + 1
+    ELSE
+        resnumArray[loopcounter, 7] = "LMH" 
+        L = L + 1
+        M = M + 1
+        H = H + 1
+    ENDIF
+NEXT loopcounter
+ 	
+'Check to see if all samples belong in the one and same pH bracket
+'===========================================
+IF (L = numRes) THEN 
+    RETURN "ALL L"
+ELSEIF (M = numRes) THEN 
+    RETURN "ALL M"
+ELSEIF (H = numRes) THEN 
+    RETURN "ALL H"
+ENDIF
+
+'If some samples needs to be removed, then display a message of which needs to be removed.
+'=============================================================
+counterloopcounter = 0
+pHArray[1] = L
+pHArray[2] = M
+pHArray[3] = H
+statusph = ArrayMax(pHArray)   
+IF (statusph = 0) THEN
+    RETURN "Error removing the correct samples"
+ELSEIF (statusph = L) THEN
+    FOR counterloop = 1 to numRes
+            resnumString = resnumArray[counterloop, 7]
+            index = InStr(resnumString, "L")
+            IF (index = 0) THEN
+                counterloopcounter = counterloopcounter + 1
+                sortoutArray[counterloopcounter] = str(counterloop) 
+            ENDIF
+    NEXT counterloop
+ELSEIF (statusph = M) THEN
+    FOR counterloop = 1 to numRes
+        resnumString = resnumArray[counterloop, 7]
+        index = InStr(resnumString, "M")
+        IF (index = 0) THEN
+            counterloopcounter = counterloopcounter + 1
+            sortoutArray[counterloopcounter] = str(counterloop) 
+        ENDIF
+    NEXT counterloop
+ELSEIF (statusph = H) THEN
+    FOR counterloop = 1 to numRes
+        resnumString = resnumArray[counterloop, 7]
+        index = InStr(resnumString, "H")
+        IF (index = 0) THEN
+            counterloopcounter = counterloopcounter + 1
+            sortoutArray[counterloopcounter] = str(counterloop) 
+        ENDIF
+    NEXT counterloop
+ELSE
+    RETURN "Error removing the correct samples"
+ENDIF
+
+'Make the "Remove samples"error message and display it to the user.
+'=============================================
+Status3 = UBOUND(sortoutArray, 1)
+loop3 = 0
+FOR loop2 = 1 to Status3
+    rowStart = sortoutArray[loop2]
+    rowStart = val(rowStart)
+    status = ArraySubset(resnumArray, "RemArr", rowStart, 1, 1, 7)
+    loop3 = loop3 + 1
+    Rem2Arr[loop3, 1] = RemArr[1]
+    Rem2Arr[loop3, 2] = RemArr[1,2]
+    Rem2Arr[loop3, 3] = RemArr[1,3]
+    Rem2Arr[loop3, 4] = RemArr[1,4]
+    Rem2Arr[loop3, 5] = RemArr[1,5]
+    Rem2Arr[loop3, 6] = RemArr[1,6]
+    Rem2Arr[loop3, 7] = RemArr[1,7]
+NEXT loop2
+
+delimiter = chr(13)
+status = ArraySubset(Rem2Arr, "Rem3Arr", 1, Status3, 2, 1)
+RemCSV = ArrayToCSVString(Rem3Arr, delimiter)
+msgbox("Remove the following Samples:" + chr(13) + RemCSV)
+
+retVal = "Some of your samples does not belong here..."
+RETURN retVal
